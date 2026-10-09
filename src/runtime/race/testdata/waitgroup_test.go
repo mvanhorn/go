@@ -5,6 +5,7 @@
 package race_test
 
 import (
+	"internal/synctest"
 	"runtime"
 	"sync"
 	"testing"
@@ -107,25 +108,31 @@ func TestRaceWaitGroupWrongWait(t *testing.T) {
 	<-c
 }
 
+// Incorrect usage: Add is too late.
+// The sleeps are virtual durations inside a synctest bubble. Virtual time
+// advances only when every goroutine in the bubble is durably blocked, so
+// both Adds finish before Wait runs at 50ms and neither Done runs until 100ms.
 func TestRaceWaitGroupWrongAdd(t *testing.T) {
-	c := make(chan bool, 2)
-	var wg sync.WaitGroup
-	go func() {
-		wg.Add(1)
-		time.Sleep(100 * time.Millisecond)
-		wg.Done()
-		c <- true
-	}()
-	go func() {
-		wg.Add(1)
-		time.Sleep(100 * time.Millisecond)
-		wg.Done()
-		c <- true
-	}()
-	time.Sleep(50 * time.Millisecond)
-	wg.Wait()
-	<-c
-	<-c
+	synctest.Run(func() {
+		c := make(chan bool, 2)
+		var wg sync.WaitGroup
+		go func() {
+			wg.Add(1)
+			time.Sleep(100 * time.Millisecond)
+			wg.Done()
+			c <- true
+		}()
+		go func() {
+			wg.Add(1)
+			time.Sleep(100 * time.Millisecond)
+			wg.Done()
+			c <- true
+		}()
+		time.Sleep(50 * time.Millisecond)
+		wg.Wait()
+		<-c
+		<-c
+	})
 }
 
 func TestNoRaceWaitGroupMultipleWait(t *testing.T) {
